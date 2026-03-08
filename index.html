@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NeoCafe — MoMo Live SMS Tester</title>
+  <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -461,7 +462,10 @@ Headers: Content-Type: application/json</code>
     const text = document.getElementById('statusText');
     if (state === 'live') {
       dot.className = 'pulse-dot';
-      text.textContent = 'Live — polling every 5 seconds';
+      text.textContent = 'Live — polling every second';
+    } else if (state === 'realtime') {
+      dot.className = 'pulse-dot';
+      text.textContent = '⚡ Real-time — messages appear instantly';
     } else if (state === 'no-redis') {
       dot.className = 'pulse-dot idle';
       text.innerHTML = '⚠️ Redis not configured — set <code style="background:#1a0f0e;border:1px solid #3d2420;border-radius:3px;padding:1px 5px;color:#D4A853;font-family:Courier New">UPSTASH_REDIS_REST_URL</code> and <code style="background:#1a0f0e;border:1px solid #3d2420;border-radius:3px;padding:1px 5px;color:#D4A853;font-family:Courier New">UPSTASH_REDIS_REST_TOKEN</code> in Netlify → Site Settings → Environment Variables';
@@ -610,10 +614,44 @@ Headers: Content-Type: application/json</code>
     }
   }
 
-  // ─── Boot ──────────────────────────────────────────────────────────────────
+  // ─── Real-time (Pusher) ───────────────────────────────────────────────────────────────────
+
+  async function initRealtime() {
+    try {
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+      if (!cfg.pusherKey) return; // not configured — polling continues
+
+      const pusher  = new Pusher(cfg.pusherKey, { cluster: cfg.pusherCluster });
+      const channel = pusher.subscribe('momo-sms');
+
+      channel.bind('new-message', (entry) => {
+        if (knownIds.has(entry.id)) return;
+        knownIds.add(entry.id);
+        const list = document.getElementById('messageList');
+        const empty = list.querySelector('.empty-state');
+        if (empty) list.innerHTML = '';
+        list.insertAdjacentHTML('afterbegin', buildMessageCard(entry, true));
+        playBeep();
+      });
+
+      pusher.connection.bind('connected',    () => setStatus('realtime'));
+      pusher.connection.bind('disconnected', () => setStatus('error'));
+      pusher.connection.bind('failed',       () => setStatus('error'));
+
+      // Keep a slow fallback poll to catch any messages missed during disconnects
+      clearInterval(pollInterval);
+      pollInterval = setInterval(fetchMessages, 30000);
+    } catch (e) {
+      // Pusher unavailable — polling continues as before
+    }
+  }
+
+  // ─── Boot ─────────────────────────────────────────────────────────────────────────────
 
   fetchMessages();
-  pollInterval = setInterval(fetchMessages, 5000);
+  pollInterval = setInterval(fetchMessages, 1000); // replaced by WebSocket once Pusher connects
+  initRealtime(); // upgrades to real-time if PUSHER_KEY env var is set
 
   // Re-poll when tab becomes visible (user returns from dialer)
   document.addEventListener('visibilitychange', () => {

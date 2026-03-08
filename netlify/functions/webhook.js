@@ -2,8 +2,10 @@
 // Receives raw SMS from MacroDroid on the vendor tablet
 // Parses it and stores to Upstash Redis
 
-const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const crypto = require('crypto');
+
+const REDIS_URL      = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN    = process.env.UPSTASH_REDIS_REST_TOKEN;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'test-secret';
 
 // The same regex the real backend will use
@@ -77,6 +79,9 @@ exports.handler = async (event) => {
     await redisCommand(['LTRIM', 'momo:messages', 0, 19]); // keep last 20
   }
 
+  // Push real-time event via Pusher (fire-and-forget)
+  await triggerPusher(entry).catch(() => {});
+
   // Always return 200 immediately (prevents MacroDroid retries)
   return {
     statusCode: 200,
@@ -92,3 +97,25 @@ exports.handler = async (event) => {
     }),
   };
 };
+
+// ─── Pusher real-time trigger (uses HTTP API + HMAC — no npm package needed) ─
+
+async function triggerPusher(entry) {
+  const appId   = process.env.PUSHER_APP_ID;
+  const key     = process.env.PUSHER_KEY;
+  const secret  = process.env.PUSHER_SECRET;
+  const cluster = process.env.PUSHER_CLUSTER || 'mt1';
+  if (!appId || !key || !secret) return;
+
+  const bodyStr   = JSON.stringify({ name: 'new-message', channel: 'momo-sms', data: JSON.stringify(entry) });
+  const timestamp = Math.floor(Date.now() / 1000);
+  const md5Body   = crypto.createHash('md5').update(bodyStr).digest('hex');
+  const queryStr  = `auth_key=${key}&auth_timestamp=${timestamp}&auth_version=1.0&body_md5=${md5Body}`;
+  const toSign    = `POST\n/apps/${appId}/events\n${queryStr}`;
+  const signature = crypto.createHmac('sha256', secret).update(toSign).digest('hex');
+
+  await fetch(
+    `https://api-${cluster}.pusher.com/apps/${appId}/events?${queryStr}&auth_signature=${signature}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: bodyStr }
+  );
+}
