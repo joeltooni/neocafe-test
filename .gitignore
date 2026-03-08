@@ -1,0 +1,12 @@
+# Editor
+.vscode/
+
+# Environment variables — real values are set in Netlify dashboard
+.env
+.env.local
+
+# Netlify dev cache
+.netlify/
+
+# OS
+.DS_Store

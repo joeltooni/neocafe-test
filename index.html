@@ -575,7 +575,6 @@ Headers: Content-Type: application/json</code>
     const secret = document.getElementById('secretInput').value.trim() || 'test-secret';
     const resultEl = document.getElementById('testResult');
     resultEl.className = 'test-result';
-    resultEl.style.display = 'none';
 
     try {
       const res = await fetch('/api/webhook', {
