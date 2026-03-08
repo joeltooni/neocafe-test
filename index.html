@@ -445,8 +445,12 @@ Headers: Content-Type: application/json</code>
       const res = await fetch('/api/messages');
       if (!res.ok) throw new Error('API error');
       const data = await res.json();
+      if (data.redis_configured === false) {
+        setStatus('no-redis');
+      } else {
+        setStatus('live');
+      }
       renderMessages(data.messages || []);
-      setStatus('live');
     } catch (e) {
       setStatus('error');
     }
@@ -458,6 +462,9 @@ Headers: Content-Type: application/json</code>
     if (state === 'live') {
       dot.className = 'pulse-dot';
       text.textContent = 'Live — polling every 5 seconds';
+    } else if (state === 'no-redis') {
+      dot.className = 'pulse-dot idle';
+      text.innerHTML = '⚠️ Redis not configured — set <code style="background:#1a0f0e;border:1px solid #3d2420;border-radius:3px;padding:1px 5px;color:#D4A853;font-family:Courier New">UPSTASH_REDIS_REST_URL</code> and <code style="background:#1a0f0e;border:1px solid #3d2420;border-radius:3px;padding:1px 5px;color:#D4A853;font-family:Courier New">UPSTASH_REDIS_REST_TOKEN</code> in Netlify → Site Settings → Environment Variables';
     } else {
       dot.className = 'pulse-dot idle';
       text.textContent = 'Connection error — retrying...';
@@ -585,8 +592,13 @@ Headers: Content-Type: application/json</code>
       const data = await res.json();
 
       if (res.ok) {
-        resultEl.className = 'test-result ok';
-        resultEl.textContent = '✓ Sent! ' + data.message + ' — check the Live Feed above';
+        if (data.redis_stored === false) {
+          resultEl.className = 'test-result err';
+          resultEl.textContent = '⚠️ Parsed OK but NOT stored — Redis env vars missing. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in Netlify → Site Settings → Environment Variables, then redeploy.';
+        } else {
+          resultEl.className = 'test-result ok';
+          resultEl.textContent = '✓ Sent! ' + data.message + ' — check the Live Feed above';
+        }
       } else {
         resultEl.className = 'test-result err';
         resultEl.textContent = '✗ Error: ' + (data.error || 'Unknown error') + ' — check your secret';

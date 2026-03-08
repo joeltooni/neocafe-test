@@ -53,6 +53,6 @@ exports.handler = async (event) => {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, redis_configured: !!(REDIS_URL && REDIS_TOKEN) }),
   };
 };

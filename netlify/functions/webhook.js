@@ -85,6 +85,7 @@ exports.handler = async (event) => {
       received: true,
       matched: !!parsed,
       parsed: parsed || null,
+      redis_stored: !!(REDIS_URL && REDIS_TOKEN),
       message: parsed
         ? `Parsed OK — ${parsed.amount} RWF from ${parsed.senderName}`
         : 'SMS received but did not match expected format',
